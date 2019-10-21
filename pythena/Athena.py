@@ -14,21 +14,28 @@ class Athena:
 
     __database = ''
     __region = ''
+    __session=None
     __athena = None
     __s3 = None
     __glue = None
     __s3_path_regex = '^s3:\/\/[a-zA-Z0-9.\-_\/]*$'
 
-    def __init__(self, database, region='us-east-1'):
+    def __init__(self, database, region='us-east-1', session=None):
         self.__database = database
         self.__region = region
         if region is None:
             region = boto3.session.Session().region_name
             if region is None:
                 raise Exceptions.NoRegionFoundError("No default aws region configuration found. Must specify a region.")
-        self.__athena = boto3.client('athena', region_name=region)
-        self.__s3 = boto3.client('s3', region_name=region)
-        self.__glue = boto3.client('glue', region_name=region)
+        self.__session = session
+        if session:
+            self.__athena = session.client('athena', region_name=region)
+            self.__s3 = session.client('s3', region_name=region)
+            self.__glue = session.client('glue', region_name=region)
+        else:
+            self.__athena = boto3.client('athena', region_name=region)
+            self.__s3 = boto3.client('s3', region_name=region)
+            self.__glue = boto3.client('glue', region_name=region)
         if database not in Utils.get_databases(region):
             raise Exceptions.DatabaseNotFound("Database " + database + " not found.")
 
@@ -42,7 +49,7 @@ class Athena:
     def print_tables(self):
         Utils.print_list(self.get_tables())
 
-    def execute(self, query, s3_output_url=None, save_results=False, run_async=False):
+    def execute(self, query, s3_output_url=None, save_results=False, run_async=False, dtype=None):
         '''
         Execute a query on Athena
         -- If run_async is false, returns dataframe and query id. If true, returns just the query id
@@ -59,9 +66,11 @@ class Athena:
                                     query=query,
                                     s3_output_url=s3_output_url,
                                     save_results=save_results,
-                                    run_async=run_async)
+                                    run_async=run_async,
+                                    dtype=dtype)
 
-    def __execute_query(self, database, query, s3_output_url, return_results=True, save_results=True, run_async=False):
+    def __execute_query(self, database, query, s3_output_url,
+                        return_results=True, save_results=True, run_async=False, dtype=None):
         s3_bucket, s3_path = self.__parse_s3_path(s3_output_url)
 
         response = self.__athena.start_query_execution(
@@ -80,11 +89,11 @@ class Athena:
           return query_execution_id
         else:
             status = self.__poll_status(query_execution_id)
-            df = self.get_result(query_execution_id)
+            df = self.get_result(query_execution_id, dtype=dtype)
             return df, query_execution_id
     
 
-    def get_result(self, query_execution_id, save_results=False):
+    def get_result(self, query_execution_id, save_results=False, dtype=None):
         '''
         Given an execution id, returns result as a pandas df if successful. Prints error otherwise. 
         -- Data deleted unless save_results true
@@ -96,7 +105,7 @@ class Athena:
         # If succeed, return df
         if res['QueryExecution']['Status']['State'] == 'SUCCEEDED':
             obj = self.__s3.get_object(Bucket=s3_bucket, Key=s3_key)
-            df = pd.read_csv(io.BytesIO(obj['Body'].read()))
+            df = pd.read_csv(io.BytesIO(obj['Body'].read()), dtype=dtype)
             
             # Remove results from s3
             if not save_results:
@@ -126,7 +135,10 @@ class Athena:
 
     # This returns the same bucket and key the AWS Athena console would use for its queries
     def __get_default_s3_url(self):
-        account_id = boto3.client('sts').get_caller_identity().get('Account')
+        if self.__session:
+            account_id = self.__session.client('sts').get_caller_identity().get('Account')
+        else:
+            account_id = boto3.client('sts').get_caller_identity().get('Account')
         return 's3://aws-athena-query-results-' + account_id + '-' + self.__region + "/Unsaved/" + datetime.now().strftime("%Y/%m/%d")
 
     def __parse_s3_path(self, s3_path):
