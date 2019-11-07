@@ -4,12 +4,12 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name='pythena',
-    version='v1.3.1',
+    name='ztech-pythena',
+    version='v0.0.1',
     license='Mozilla Public License Version 2.0',
-    author='chris.pruitt',
-    url='https://github.com/chrispruitt/pythena',
-    author_email='chris.pruitt15@gmail.com',
+    author='felipe.tancredo',
+    url='https://github.com/ztech-company/pythena',
+    author_email='felipetancredo@gmail.com',
     long_description_content_type="text/markdown",
     long_description=long_description,
     packages=setuptools.find_packages(),
@@ -19,6 +19,6 @@ setuptools.setup(
         'botocore>=1.12.90',
         'retrying>=1.3.3'
     ],
-    description='A simple athena wrapper leveraging boto3 to '
+    description='A simple athena wrapper (forked from chris.pruitt) leveraging boto3 to '
                 'execute queries and return results while only requiring a database and a query string.'
 )

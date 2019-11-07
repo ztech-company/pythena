@@ -4,7 +4,7 @@ This is a simple python module that will allow you to query athena the same way 
 
 ## Install
 ```bash
-pip install pythena
+pip install ztech-pythena
 ```
 
 ## Setup
