@@ -49,7 +49,7 @@ class Athena:
     def print_tables(self):
         Utils.print_list(self.get_tables())
 
-    def execute(self, query, s3_output_url=None, save_results=False, run_async=False, dtype=None):
+    def execute(self, query, s3_output_url=None, save_results=False, run_async=False, dtype=None, return_results=True):
         '''
         Execute a query on Athena
         -- If run_async is false, returns dataframe and query id. If true, returns just the query id
@@ -67,6 +67,7 @@ class Athena:
                                     s3_output_url=s3_output_url,
                                     save_results=save_results,
                                     run_async=run_async,
+                                    return_results=return_results,
                                     dtype=dtype)
 
     def __execute_query(self, database, query, s3_output_url,
@@ -85,12 +86,13 @@ class Athena:
         query_execution_id = response['QueryExecutionId']
 
         # If executing asynchronously, just return the id so results can be fetched later. Else, return dataframe (or error message)
-        if run_async: 
+        if run_async or not return_results:
           return query_execution_id
         else:
             status = self.__poll_status(query_execution_id)
             df = self.get_result(query_execution_id, dtype=dtype)
             return df, query_execution_id
+
     
 
     def get_result(self, query_execution_id, save_results=False, dtype=None):
