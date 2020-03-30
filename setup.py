@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='ztech-pythena',
-    version='v0.0.2',
+    version='v0.0.4',
     license='Mozilla Public License Version 2.0',
     author='felipe.tancredo',
     url='https://github.com/ztech-company/pythena',

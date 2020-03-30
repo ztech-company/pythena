@@ -7,20 +7,21 @@ import pandas as pd
 from retrying import retry
 import pythena.Utils as Utils
 import pythena.Exceptions as Exceptions
-from botocore.errorfactory import ClientError
+from botocore.client import Config
 
 
 class Athena:
-
     __database = ''
     __region = ''
-    __session=None
+    __session = None
     __athena = None
     __s3 = None
     __glue = None
     __s3_path_regex = '^s3:\/\/[a-zA-Z0-9.\-_\/]*$'
 
     def __init__(self, database, region='us-east-1', session=None):
+        config = Config(connect_timeout=600, read_timeout=600, retries={'max_attempts': 2})
+
         self.__database = database
         self.__region = region
         if region is None:
@@ -29,13 +30,13 @@ class Athena:
                 raise Exceptions.NoRegionFoundError("No default aws region configuration found. Must specify a region.")
         self.__session = session
         if session:
-            self.__athena = session.client('athena', region_name=region)
-            self.__s3 = session.client('s3', region_name=region)
-            self.__glue = session.client('glue', region_name=region)
+            self.__athena = session.client('athena', region_name=region, config=config)
+            self.__s3 = session.client('s3', region_name=region, config=config)
+            self.__glue = session.client('glue', region_name=region, config=config)
         else:
-            self.__athena = boto3.client('athena', region_name=region)
-            self.__s3 = boto3.client('s3', region_name=region)
-            self.__glue = boto3.client('glue', region_name=region)
+            self.__athena = boto3.client('athena', region_name=region, config=config)
+            self.__s3 = boto3.client('s3', region_name=region, config=config)
+            self.__glue = boto3.client('glue', region_name=region, config=config)
         if database not in Utils.get_databases(region):
             raise Exceptions.DatabaseNotFound("Database " + database + " not found.")
 
@@ -87,13 +88,11 @@ class Athena:
 
         # If executing asynchronously, just return the id so results can be fetched later. Else, return dataframe (or error message)
         if run_async or not return_results:
-          return query_execution_id
+            return query_execution_id
         else:
             status = self.__poll_status(query_execution_id)
             df = self.get_result(query_execution_id, dtype=dtype)
             return df, query_execution_id
-
-    
 
     def get_result(self, query_execution_id, save_results=False, dtype=None):
         '''
@@ -101,14 +100,14 @@ class Athena:
         -- Data deleted unless save_results true
         '''
         # Get execution status and save path, which we can then split into bucket and key. Automatically handles csv/txt 
-        res = self.__athena.get_query_execution(QueryExecutionId = query_execution_id) 
+        res = self.__athena.get_query_execution(QueryExecutionId=query_execution_id)
         s3_bucket, s3_key = self.__parse_s3_path(res['QueryExecution']['ResultConfiguration']['OutputLocation'])
 
         # If succeed, return df
         if res['QueryExecution']['Status']['State'] == 'SUCCEEDED':
             obj = self.__s3.get_object(Bucket=s3_bucket, Key=s3_key)
             df = pd.read_csv(io.BytesIO(obj['Body'].read()), dtype=dtype)
-            
+
             # Remove results from s3
             if not save_results:
                 self.__s3.delete_object(Bucket=s3_bucket, Key=s3_key)
@@ -118,12 +117,13 @@ class Athena:
 
         # If failed, return error message
         elif res['QueryExecution']['Status']['State'] == 'FAILED':
-            raise Exceptions.QueryExecutionFailedException("Query failed with response: %s" % (self.get_query_error(query_execution_id)))
+            raise Exceptions.QueryExecutionFailedException(
+                "Query failed with response: %s" % (self.get_query_error(query_execution_id)))
         elif res['QueryExecution']['Status']['State'] == 'RUNNING':
             raise Exceptions.QueryStillRunningException("Query has not finished executing.")
-        else: 
-            raise Exceptions.QueryUnknownStatusException("Query is in an unknown status. Check athena logs for more info.")
-
+        else:
+            raise Exceptions.QueryUnknownStatusException(
+                "Query is in an unknown status. Check athena logs for more info.")
 
     @retry(stop_max_attempt_number=10,
            wait_exponential_multiplier=300,
@@ -133,7 +133,8 @@ class Athena:
         if status in ['SUCCEEDED', 'FAILED']:
             return status
         else:
-            raise Exceptions.QueryExecutionTimeoutException("Query to athena has timed out. Try running the query in the athena or asynchronously")
+            raise Exceptions.QueryExecutionTimeoutException(
+                "Query to athena has timed out. Try running the query in the athena or asynchronously")
 
     # This returns the same bucket and key the AWS Athena console would use for its queries
     def __get_default_s3_url(self):
@@ -141,7 +142,8 @@ class Athena:
             account_id = self.__session.client('sts').get_caller_identity().get('Account')
         else:
             account_id = boto3.client('sts').get_caller_identity().get('Account')
-        return 's3://aws-athena-query-results-' + account_id + '-' + self.__region + "/Unsaved/" + datetime.now().strftime("%Y/%m/%d")
+        return 's3://aws-athena-query-results-' + account_id + '-' + self.__region + "/Unsaved/" + datetime.now().strftime(
+            "%Y/%m/%d")
 
     def __parse_s3_path(self, s3_path):
         if not re.compile(self.__s3_path_regex).match(s3_path):
@@ -150,7 +152,7 @@ class Athena:
         bucket = url.netloc
         path = url.path.lstrip('/')
         return bucket, path
-    
+
     # A few functions to surface boto client functions to pythena: get status, get query error, and cancel a query
     def get_query_status(self, query_execution_id):
         res = self.__athena.get_query_execution(QueryExecutionId=query_execution_id)
@@ -158,15 +160,11 @@ class Athena:
 
     def get_query_error(self, query_execution_id):
         res = self.__athena.get_query_execution(QueryExecutionId=query_execution_id)
-        if res['QueryExecution']['Status']['State']=='FAILED':
+        if res['QueryExecution']['Status']['State'] == 'FAILED':
             return res['QueryExecution']['Status']['StateChangeReason']
-        else: 
+        else:
             return "Query has not failed: check status or see Athena log for more details"
 
-    def cancel_query(self, query_execution_id): 
+    def cancel_query(self, query_execution_id):
         self.__athena.stop_query_execution(QueryExecutionId=query_execution_id)
-        return 
-
-
-
-
+        return
