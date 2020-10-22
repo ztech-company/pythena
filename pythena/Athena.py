@@ -18,10 +18,11 @@ class Athena:
     __s3 = None
     __glue = None
     __s3_path_regex = '^s3:\/\/[a-zA-Z0-9.\-_\/]*$'
+    __configs = None
 
-    def __init__(self, database, region='us-east-1', session=None):
-        config = Config(connect_timeout=600, read_timeout=600, retries={'max_attempts': 2})
-
+    def __init__(self, database, region='us-east-1', session=None, configs= None):
+        config = configs
+        self.__configs = configs
         self.__database = database
         self.__region = region
         if region is None:
