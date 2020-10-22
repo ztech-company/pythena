@@ -18,10 +18,10 @@ class Athena:
     __s3 = None
     __glue = None
     __s3_path_regex = '^s3:\/\/[a-zA-Z0-9.\-_\/]*$'
+    __configs = None
 
-    def __init__(self, database, region='us-east-1', session=None):
-        config = Config(connect_timeout=600, read_timeout=600, retries={'max_attempts': 2})
-
+    def __init__(self, database, region='us-east-1', session=None, configs=None):
+        self.__configs = configs
         self.__database = database
         self.__region = region
         if region is None:
@@ -30,13 +30,13 @@ class Athena:
                 raise Exceptions.NoRegionFoundError("No default aws region configuration found. Must specify a region.")
         self.__session = session
         if session:
-            self.__athena = session.client('athena', region_name=region, config=config)
-            self.__s3 = session.client('s3', region_name=region, config=config)
-            self.__glue = session.client('glue', region_name=region, config=config)
+            self.__athena = session.client('athena', region_name=region, config=self.__configs)
+            self.__s3 = session.client('s3', region_name=region, config=self.__configs)
+            self.__glue = session.client('glue', region_name=region, config=self.__configs)
         else:
-            self.__athena = boto3.client('athena', region_name=region, config=config)
-            self.__s3 = boto3.client('s3', region_name=region, config=config)
-            self.__glue = boto3.client('glue', region_name=region, config=config)
+            self.__athena = boto3.client('athena', region_name=region, config=self.__configs)
+            self.__s3 = boto3.client('s3', region_name=region, config=self.__configs)
+            self.__glue = boto3.client('glue', region_name=region, config=self.__configs)
         if database not in Utils.get_databases(region):
             raise Exceptions.DatabaseNotFound("Database " + database + " not found.")
 
@@ -125,7 +125,7 @@ class Athena:
             raise Exceptions.QueryUnknownStatusException(
                 "Query is in an unknown status. Check athena logs for more info.")
 
-    @retry(stop_max_attempt_number=10,
+    @retry(stop_max_attempt_number=100,
            wait_exponential_multiplier=300,
            wait_exponential_max=60 * 1000)
     def __poll_status(self, query_execution_id):
