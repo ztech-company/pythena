@@ -21,7 +21,6 @@ class Athena:
     __configs = None
 
     def __init__(self, database, region='us-east-1', session=None, configs= None):
-        config = configs
         self.__configs = configs
         self.__database = database
         self.__region = region
@@ -31,13 +30,13 @@ class Athena:
                 raise Exceptions.NoRegionFoundError("No default aws region configuration found. Must specify a region.")
         self.__session = session
         if session:
-            self.__athena = session.client('athena', region_name=region, config=config)
-            self.__s3 = session.client('s3', region_name=region, config=config)
-            self.__glue = session.client('glue', region_name=region, config=config)
+            self.__athena = session.client('athena', region_name=region, config=self.__configs)
+            self.__s3 = session.client('s3', region_name=region, config=self.__configs)
+            self.__glue = session.client('glue', region_name=region, config=self.__configs)
         else:
-            self.__athena = boto3.client('athena', region_name=region, config=config)
-            self.__s3 = boto3.client('s3', region_name=region, config=config)
-            self.__glue = boto3.client('glue', region_name=region, config=config)
+            self.__athena = boto3.client('athena', region_name=region, config=self.__configs)
+            self.__s3 = boto3.client('s3', region_name=region, config=self.__configs)
+            self.__glue = boto3.client('glue', region_name=region, config=self.__configs)
         if database not in Utils.get_databases(region):
             raise Exceptions.DatabaseNotFound("Database " + database + " not found.")
 
